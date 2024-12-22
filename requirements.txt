@@ -2,11 +2,13 @@ pandas>=1.4.3,<1.6
 faker==19.6.2
 python-dateutil==2.8.2
 apache-beam[gcp,interactive]==2.50.0
-happybase==1.2.0
-kafka-python==2.0.2
+happybase>=1.2.0
+kafka-python>=2.0.2
 thriftpy2==0.4.17
 fastapi==0.104.1
 uvicorn==0.24.0
 pydantic==2.5.2
-jsonschema==4.19.0
-backoff==2.2.1
+jsonschema>=4.17.3
+backoff>=2.2.1
+prettytable
+windows-curses; sys_platform == 'win32'

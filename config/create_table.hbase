@@ -1,3 +1,5 @@
-create 'payments', 'cf'
+disable 'payments'
+drop 'payments'
+create 'payments', 'transaction', 'processing', 'originator', 'beneficiary', 'ach', 'wire', 'rtp'
 list
 exit

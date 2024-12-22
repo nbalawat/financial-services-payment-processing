@@ -1,34 +1,24 @@
 from faker import Faker
-import uuid
 import random
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+import uuid
+from decimal import Decimal
+import logging
 import pandas as pd
+from typing import List, Dict, Any
 
-from transaction_models import (
-    PaymentType,
-    PaymentStatus,
-    BasePayment,
-    ACHPayment,
-    WirePayment,
-    RTPPayment,
-    CheckPayment,
-    SEPAPayment,
-    CardPayment,
-    DirectDebitPayment,
-    StandingOrderPayment,
-    P2PPayment,
-    Amount,
-    Party,
-    AccountInfo,
-    RoutingInfo,
-    Address,
-    ContactInfo,
+from payment_system.core.transaction_models import (
+    PaymentType, PaymentStatus, BasePayment,
+    ACHPayment, WirePayment, CheckPayment,
+    RTPayment, SEPAPayment, CardPayment,
+    DirectDebitPayment, StandingOrderPayment,
+    P2PPayment, Amount, Party, AccountInfo,
+    RoutingInfo, Address, ContactInfo,
     ProcessingInfo
 )
 
 class TransactionGenerator:
-    def __init__(self, num_customers: int = 1000):
+    def __init__(self, num_customers: int = 100):
         self.fake = Faker()
         self.customers = self._generate_customers(num_customers)
         self.banks = self._generate_banks()
@@ -229,65 +219,50 @@ class TransactionGenerator:
             charges={'type': random.choice(['OUR', 'BEN', 'SHA']), 'amount': 45.00}
         )
 
-    def generate_rtp_payment(self) -> RTPPayment:
+    def generate_rtp_payment(self) -> RTPayment:
         """Generate a Real-Time Payment transaction"""
         originator = random.choice(self.customers)
         beneficiary = random.choice(self.customers)
-        while originator == beneficiary:
-            beneficiary = random.choice(self.customers)
-
+        
+        # RTP transactions are typically settled within seconds
         submission_time = datetime.now()
         settlement_time = submission_time + timedelta(seconds=random.randint(1, 5))
-
-        return RTPPayment(
+        
+        return RTPayment(
             payment_id=f"RTP-{uuid.uuid4().hex[:8].upper()}",
             payment_type=PaymentType.RTP,
             version="1.0",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            status=random.choice(list(PaymentStatus)),
+            created_at=submission_time,
+            updated_at=submission_time,
+            status=PaymentStatus.RECEIVED,
             amount=Amount(
-                value=round(random.uniform(100, 100000), 2),  # RTP typically has lower limits
+                value=round(random.uniform(100, 50000), 2),
                 currency="USD"
             ),
-            originator=self._create_party(originator, random.choice(self.banks)),
-            beneficiary=self._create_party(beneficiary, random.choice(self.banks)),
-            processing=self._create_processing_info(),
-            references={
-                'end_to_end_id': f"E2E{uuid.uuid4().hex[:8].upper()}",
-                'transaction_id': f"TXN{uuid.uuid4().hex[:8].upper()}"
-            },
-            remittance_info={
-                'type': 'STRUCTURED',
-                'purpose_code': random.choice(['SALA', 'SUPP', 'TRAD']),
-                'description': f"Payment {self.fake.random_number(digits=6, fix_len=True)}"
-            },
-            type_specific_data={
-                'clearing_system': 'TCH_RTP',
-                'settlement_method': 'INSTANT',
-                'processing_mode': 'REAL_TIME'
-            },
-            regulatory={
-                'compliance_checks': {
-                    'sanctions_check': {'status': 'CLEARED'},
-                    'aml_check': {'status': 'CLEARED'}
-                }
-            },
-            metadata={
-                'source_system': 'RTP_SYSTEM',
-                'business_unit': 'PAYMENTS'
-            },
-            clearing_system='TCH_RTP',
-            settlement_method='INSTANT',
+            originator=originator,
+            beneficiary=beneficiary,
+            processing=ProcessingInfo(
+                priority="HIGH",
+                processing_window="REAL_TIME",
+                submission_date=submission_time,
+                effective_date=submission_time,
+                settlement_date=settlement_time,
+                status_tracking={}
+            ),
+            references={},
+            remittance_info={},
+            type_specific_data={},
+            regulatory={},
+            metadata={},
+            clearing_system="TCH-RTP",
+            settlement_method="REAL_TIME_GROSS_SETTLEMENT",
             confirmation={
-                'confirmation_id': f"CONF{uuid.uuid4().hex[:8].upper()}",
-                'confirmation_timestamp': settlement_time.isoformat(),
-                'settlement_confirmation': f"TCH{uuid.uuid4().hex[:10].upper()}"
+                "required": True,
+                "window_minutes": 1
             },
             timing={
-                'submission_timestamp': submission_time.isoformat(),
-                'settlement_timestamp': settlement_time.isoformat(),
-                'expiry_timestamp': (submission_time + timedelta(minutes=5)).isoformat()
+                "submission_time": submission_time.isoformat(),
+                "expected_settlement_time": settlement_time.isoformat()
             }
         )
 
@@ -699,7 +674,7 @@ class TransactionGenerator:
                 "wire_type": transaction.wire_type,
                 "message_type": transaction.message_type
             })
-        elif isinstance(transaction, RTPPayment):
+        elif isinstance(transaction, RTPayment):
             base_dict.update({
                 "clearing_system": transaction.clearing_system,
                 "settlement_method": transaction.settlement_method

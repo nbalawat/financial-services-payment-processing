@@ -87,6 +87,25 @@ class BasePayment:
     regulatory: Dict[str, Any]
     metadata: Dict[str, Any]
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the payment object to a dictionary"""
+        def _convert(obj):
+            if isinstance(obj, (BasePayment, Amount, Party, ProcessingInfo, 
+                              RoutingInfo, AccountInfo, Address, ContactInfo)):
+                return {k: _convert(v) for k, v in obj.__dict__.items()}
+            elif isinstance(obj, (PaymentType, PaymentStatus)):
+                return obj.value
+            elif isinstance(obj, datetime):
+                return obj.isoformat()
+            elif isinstance(obj, dict):
+                return {k: _convert(v) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                return [_convert(x) for x in obj]
+            else:
+                return obj
+
+        return _convert(self)
+
 @dataclass
 class ACHPayment(BasePayment):
     sec_code: str
@@ -101,7 +120,7 @@ class WirePayment(BasePayment):
     charges: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
-class RTPPayment(BasePayment):
+class RTPayment(BasePayment):
     clearing_system: str
     settlement_method: str
     confirmation: Dict[str, Any]

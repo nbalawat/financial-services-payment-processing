@@ -65,28 +65,23 @@ generate_payment_transactions/
 1. **Create and activate a virtual environment**:
 ```bash
 python -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
 2. **Install the package in development mode**:
 ```bash
-pip install -e ".[dev]"
+pip install -e .
 ```
 
-This will install:
-- All required dependencies
-- Development tools (pytest, black, flake8)
-- The payment_system package in editable mode
-
-3. **Start the infrastructure services**:
+3. **Verify installation**:
 ```bash
-docker-compose -f config/docker-compose.yml up -d
+python -c "import payment_system; print(payment_system.__version__)"
 ```
 
-4. **Create the HBase table**:
-```bash
-docker exec hbase hbase shell /opt/create_table.hbase
-```
+You should see the version number (0.1.0) printed. If you get an import error, make sure you:
+1. Are in the correct directory (generate_payment_transactions)
+2. Have activated the virtual environment
+3. Have run the pip install command successfully
 
 ## Usage
 
@@ -133,92 +128,6 @@ python src/payment_system/api/main.py
 ```bash
 docker-compose ps
 ```
-
-## Monitoring Kafka
-
-There are several ways to monitor and inspect your Kafka cluster and messages:
-
-### 1. Kafka UI Dashboard
-The project includes a web-based Kafka UI for easy monitoring:
-- Access the UI at: http://localhost:8080
-- Features:
-  - View all topics and their configurations
-  - Browse messages in topics
-  - Monitor broker metrics
-  - Track consumer groups
-  - View partition information
-  - Real-time message monitoring
-
-### 2. Command Line Tools
-
-#### View Messages in Real-time
-To see messages as they are being published:
-```bash
-docker exec kafka kafka-console-consumer --bootstrap-server localhost:29092 --topic payment-transactions
-```
-This command will show new messages as they arrive. Press Ctrl+C to stop.
-
-#### View All Messages from Beginning
-To see all messages, including historical ones:
-```bash
-docker exec kafka kafka-console-consumer --bootstrap-server localhost:29092 --topic payment-transactions --from-beginning
-```
-This is useful for debugging or verifying historical data. Note that this will show all messages ever published to the topic.
-
-#### Check Topic Information
-To view detailed information about the topic:
-```bash
-docker exec kafka kafka-topics --bootstrap-server localhost:29092 --describe --topic payment-transactions
-```
-This shows:
-- Number of partitions
-- Replication factor
-- Partition leaders
-- Replica information
-- Configuration settings
-
-#### Check Message Counts
-To see the number of messages in each partition:
-```bash
-docker exec kafka kafka-run-class kafka.tools.GetOffsetShell --broker-list localhost:29092 --topic payment-transactions
-```
-Output format:
-- `[topic]:[partition]:[offset]`
-- The offset number represents the total number of messages in that partition
-
-### Best Practices for Monitoring
-
-1. **Regular Health Checks**:
-   - Use the Kafka UI to monitor broker health
-   - Check consumer lag to ensure messages are being processed
-   - Monitor disk usage and partition distribution
-
-2. **Debugging Tips**:
-   - Start with the Kafka UI for a high-level overview
-   - Use console consumer with `--from-beginning` to verify data integrity
-   - Check topic configuration if experiencing performance issues
-
-3. **Performance Monitoring**:
-   - Watch for growing consumer lag
-   - Monitor partition distribution
-   - Check message throughput rates
-
-### Common Issues and Solutions
-
-1. **Messages Not Visible**:
-   - Verify producer is publishing to correct topic
-   - Check consumer group offsets
-   - Ensure topic exists and is properly configured
-
-2. **Performance Issues**:
-   - Check number of partitions
-   - Verify consumer group configurations
-   - Monitor broker resources
-
-3. **Connection Issues**:
-   - Verify Kafka and Zookeeper are running
-   - Check network connectivity
-   - Confirm broker listener configurations
 
 ## Kafka Message Keys
 
@@ -292,6 +201,54 @@ def publish_payment(self, payment_dict, topic='payment-transactions'):
 
 This would ensure that any updates to the same payment ID are processed in order.
 
+## Streaming Simulation
+
+For real-time transaction processing simulation, follow these steps:
+
+1. **Start Infrastructure**:
+```bash
+docker-compose -f config/docker-compose.yml up -d
+```
+
+2. **Create HBase Table**:
+```bash
+docker exec hbase hbase shell /opt/create_table.hbase
+```
+
+3. **Start the Streaming Producer**:
+This will generate continuous payment transactions (5 per second by default):
+```bash
+python src/payment_system/utils/streaming_producer.py
+```
+
+4. **Start the Payment Processor**:
+In a new terminal, start the Apache Beam pipeline:
+```bash
+python src/payment_system/core/payment_processor.py
+```
+
+5. **Monitor the System**:
+In a new terminal, start the monitoring dashboard:
+```bash
+python src/payment_system/utils/monitor_streaming.py
+```
+
+The monitoring dashboard shows:
+- Kafka lag (difference between produced and consumed messages)
+- Average processing time per transaction
+- Current transaction rate
+- Error count
+
+You can adjust the transaction rate by modifying the `transactions_per_second` parameter when running the streaming producer:
+```bash
+python src/payment_system/utils/streaming_producer.py --tps 10  # 10 transactions per second
+```
+
+To stop the simulation:
+1. Press Ctrl+C in each terminal window
+2. The processes will shut down gracefully
+3. Run `docker-compose -f config/docker-compose.yml down` to stop the infrastructure
+
 ## HBase Integration and Management
 
 ### HBase Configuration
@@ -303,17 +260,17 @@ The HBase container is configured with:
 ### HBase Table Schema
 - Table: `payments`
 - Column Family: `cf`
-- Row Key Format: `{timestamp}_{payment_type}_{originator_id}`
+- Row Key Format: `{timestamp}_{paymentType}_{originatorId}`
 - Columns:
-  - payment_id
-  - payment_type
-  - amount_value
-  - amount_currency
-  - originator_id
-  - originator_name
-  - beneficiary_id
-  - beneficiary_name
-  - created_at
+  - paymentId
+  - paymentType
+  - amountValue
+  - amountCurrency
+  - originatorId
+  - originatorName
+  - beneficiaryId
+  - beneficiaryName
+  - createdAt
 
 ### Setting Up HBase
 
@@ -422,6 +379,64 @@ docker-compose up -d
 docker exec hbase hbase shell /opt/create_table.hbase
 ```
 
+## Monitoring
+
+### HBase Data
+To view data in HBase, first connect to the HBase shell:
+```bash
+docker exec -it hbase hbase shell
+```
+
+Once in the HBase shell, you can use these commands:
+
+#### Basic Commands
+```bash
+# List all tables
+list
+
+# View table structure
+describe 'payments'
+
+# Count total records
+count 'payments'
+
+# View 5 most recent payments
+scan 'payments', {LIMIT => 5}
+```
+
+#### Viewing Specific Data
+```bash
+# View specific row by key
+get 'payments', 'your-row-key'
+
+# Scan for specific payment type (e.g., WIRE transfers from today)
+scan 'payments', {FILTER => "PrefixFilter('20241222_WIRE')"}
+
+# Scan with column filters
+scan 'payments', {COLUMNS => ['transaction:payment_type', 'transaction:amount']}
+
+# Scan with time range (last hour)
+scan 'payments', {TIMERANGE => [Time.now.to_i * 1000 - 3600000, Time.now.to_i * 1000]}
+```
+
+#### Table Management
+```bash
+# Disable table (required before modifications)
+disable 'payments'
+
+# Enable table
+enable 'payments'
+
+# Check if table is enabled
+is_enabled 'payments'
+
+# Get table status
+status 'payments'
+```
+
+Note: Row keys in our system are formatted as: `timestamp_paymentType_originatorId`
+Example: `20241222001530_WIRE_CUST123` (December 22, 2024 00:15:30 WIRE payment from CUST123)
+
 ## Error Handling
 
 The system implements comprehensive error handling:
@@ -486,3 +501,116 @@ Remember to update this README when making significant changes to:
 - Data models
 - Processing pipeline
 - Deployment instructions
+
+# Payment Transaction Processing System
+
+A robust payment transaction processing system that handles various payment types (ACH, WIRE, RTP, SEPA, etc.) using Kafka for message streaming and HBase for persistent storage.
+
+## Features
+
+- **Real-time Payment Processing**
+  - Supports multiple payment types: ACH, WIRE, RTP, SEPA, CARD, DIRECT_DEBIT
+  - Configurable transaction generation rate
+  - Real-time metrics and monitoring
+
+- **Fault Tolerance**
+  - Automatic backup of failed transactions to disk
+  - Recovery mechanism for processing backed-up payments
+  - Graceful handling of HBase connection issues
+
+- **Data Storage**
+  - HBase for persistent storage with optimized column families
+  - Kafka for message streaming and queuing
+  - Local JSON backup for failed transactions
+
+## System Components
+
+### 1. Transaction Producer (`streaming_producer.py`)
+- Generates sample payment transactions
+- Configurable transactions per second (TPS)
+- Supports multiple payment types with realistic data
+
+### 2. Transaction Processor (`streaming_processor.py`)
+- Consumes transactions from Kafka
+- Validates and processes payments
+- Stores transactions in HBase
+- Handles failures with automatic backup and recovery
+- Tracks processing metrics
+
+## Getting Started
+
+1. **Start the Infrastructure**
+```bash
+cd config
+docker-compose up -d
+```
+
+2. **Start the Transaction Producer**
+```bash
+# Default: 5 TPS
+python src/payment_system/utils/streaming_producer.py
+
+# Custom TPS:
+python src/payment_system/utils/streaming_producer.py --tps 10
+```
+
+3. **Start the Transaction Processor**
+```bash
+python src/payment_system/core/streaming_processor.py
+```
+
+## Monitoring
+
+### HBase Data
+To view data in HBase:
+```bash
+# Connect to HBase shell
+docker exec -it hbase hbase shell
+
+# View recent payments
+scan 'payments', {LIMIT => 5}
+
+# Count total records
+count 'payments'
+```
+
+### Kafka UI
+Access the Kafka UI dashboard at http://localhost:8080 to monitor:
+- Topic statistics
+- Message throughput
+- Consumer groups
+
+### Processor Metrics
+The processor logs metrics periodically, including:
+- Processed payment count
+- Failed payment count
+- Processing latency
+- Recovery statistics
+
+## Directory Structure
+```
+.
+├── config/
+│   ├── docker-compose.yml    # Infrastructure setup
+│   └── create_table.hbase    # HBase table creation script
+├── src/
+│   └── payment_system/
+│       ├── core/
+│       │   ├── streaming_processor.py   # Main processor
+│       │   └── transaction_models.py    # Payment models
+│       └── utils/
+│           └── streaming_producer.py    # Transaction generator
+├── failed_payments/          # Backup directory for failed transactions
+└── README.md
+```
+
+## Error Handling
+- Failed HBase writes are automatically backed up to `failed_payments/` directory
+- Payments are recovered automatically when HBase becomes available
+- Each backup file contains the complete payment data in JSON format
+
+## Monitoring and Maintenance
+- Monitor the `failed_payments/` directory for backup files
+- Check processor logs for error messages and metrics
+- Use HBase shell commands to verify data persistence
+- Monitor Kafka UI for message flow and consumer health

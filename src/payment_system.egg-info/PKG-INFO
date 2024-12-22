@@ -1,0 +1,5 @@
+Metadata-Version: 2.1
+Name: payment-system
+Version: 0.1.0
+Requires-Python: >=3.11
+Provides-Extra: dev

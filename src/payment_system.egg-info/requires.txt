@@ -1,0 +1,13 @@
+apache-beam
+happybase
+kafka-python
+fastapi
+uvicorn
+faker
+python-dateutil
+
+[dev]
+pytest
+pytest-cov
+black
+flake8
