@@ -1,0 +1,3 @@
+create 'payments', 'cf'
+list
+exit
